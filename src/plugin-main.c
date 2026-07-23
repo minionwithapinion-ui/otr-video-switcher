@@ -12,6 +12,7 @@ the Free Software Foundation; either version 2 of the License, or
 #include <plugin-support.h>
 
 #include <graphics/vec4.h>
+#include <obs-interaction.h>
 #include <util/platform.h>
 #include <util/threading.h>
 
@@ -51,6 +52,8 @@ struct otr_video_switcher {
 	float transition_seconds;
 	float whoosh_volume;
 	float animation_elapsed;
+	float startup_elapsed;
+	float restart_elapsed;
 	uint64_t last_switch_ns;
 	int active_slot;
 	bool whoosh_enabled;
@@ -69,6 +72,24 @@ struct otr_video_switcher {
 static void otr_update(void *data, obs_data_t *settings);
 static void otr_select_slot(struct otr_video_switcher *switcher, int slot);
 static void otr_stop(struct otr_video_switcher *switcher);
+
+static void load_default_hotkeys(struct otr_video_switcher *switcher)
+{
+	const uint32_t modifiers = INTERACT_CONTROL_KEY | INTERACT_ALT_KEY;
+	obs_key_combination_t combinations[4] = {
+		{modifiers, OBS_KEY_1},
+		{modifiers, OBS_KEY_2},
+		{modifiers, OBS_KEY_3},
+		{modifiers, OBS_KEY_0},
+	};
+
+	for (size_t i = 0; i < 3; i++) {
+		if (switcher->slot_hotkeys[i] != OBS_INVALID_HOTKEY_ID)
+			obs_hotkey_load_bindings(switcher->slot_hotkeys[i], &combinations[i], 1);
+	}
+	if (switcher->stop_hotkey != OBS_INVALID_HOTKEY_ID)
+		obs_hotkey_load_bindings(switcher->stop_hotkey, &combinations[3], 1);
+}
 
 static const char *otr_get_name(void *unused)
 {
@@ -167,6 +188,8 @@ static void otr_select_slot(struct otr_video_switcher *switcher, int slot)
 	switcher->active_slot = slot;
 	switcher->has_media = true;
 	switcher->animation_elapsed = 0.0f;
+	switcher->startup_elapsed = 0.0f;
+	switcher->restart_elapsed = 0.0f;
 	switcher->animation_waiting = true;
 	switcher->animation_running = false;
 	switcher->whoosh_pending = true;
@@ -191,6 +214,8 @@ static void otr_stop(struct otr_video_switcher *switcher)
 	switcher->animation_running = false;
 	switcher->whoosh_pending = false;
 	switcher->animation_elapsed = 0.0f;
+	switcher->startup_elapsed = 0.0f;
+	switcher->restart_elapsed = 0.0f;
 	pthread_mutex_unlock(&switcher->mutex);
 
 	blog(LOG_INFO, "[OTR Video Switcher] Stopped all videos");
@@ -257,6 +282,15 @@ static bool stop_button(obs_properties_t *props, obs_property_t *property, void 
 	UNUSED_PARAMETER(props);
 	UNUSED_PARAMETER(property);
 	otr_stop(data);
+	return true;
+}
+
+static bool restore_hotkeys_button(obs_properties_t *props, obs_property_t *property, void *data)
+{
+	UNUSED_PARAMETER(props);
+	UNUSED_PARAMETER(property);
+	load_default_hotkeys(data);
+	blog(LOG_INFO, "[OTR Video Switcher] Restored Ctrl+Alt+1/2/3/0 Stream Deck shortcuts");
 	return true;
 }
 
@@ -342,6 +376,7 @@ static void *otr_create(obs_data_t *settings, obs_source_t *source)
 					   slot_3_hotkey, switcher);
 	switcher->stop_hotkey = obs_hotkey_register_source(
 		source, "OTRVideoSwitcher.Stop", obs_module_text("Hotkey.Stop"), stop_hotkey, switcher);
+	load_default_hotkeys(switcher);
 
 	return switcher;
 
@@ -390,9 +425,10 @@ static void otr_defaults(obs_data_t *settings)
 static obs_properties_t *otr_properties(void *data)
 {
 	obs_properties_t *props = obs_properties_create();
-	obs_properties_set_flags(props, OBS_PROPERTIES_DEFER_UPDATE);
 
 	obs_properties_add_text(props, "instructions", obs_module_text("Properties.Instructions"), OBS_TEXT_INFO);
+	obs_properties_add_text(props, "stream_deck_instructions",
+				obs_module_text("Properties.StreamDeckInstructions"), OBS_TEXT_INFO);
 
 	const char *filter = obs_module_text("Properties.VideoFilter");
 	obs_properties_add_path(props, SETTING_VIDEO_1, obs_module_text("Properties.Video1"), OBS_PATH_FILE, filter,
@@ -418,6 +454,8 @@ static obs_properties_t *otr_properties(void *data)
 	obs_properties_add_button(props, "play_video_2", obs_module_text("Properties.PlayVideo2"), slot_2_button);
 	obs_properties_add_button(props, "play_video_3", obs_module_text("Properties.PlayVideo3"), slot_3_button);
 	obs_properties_add_button(props, "stop_all", obs_module_text("Properties.Stop"), stop_button);
+	obs_properties_add_button(props, "restore_hotkeys", obs_module_text("Properties.RestoreHotkeys"),
+				  restore_hotkeys_button);
 
 	UNUSED_PARAMETER(data);
 	return props;
@@ -445,17 +483,24 @@ static void otr_tick(void *data, float seconds)
 {
 	struct otr_video_switcher *switcher = data;
 	bool trigger_whoosh = false;
+	bool retry_media = false;
 
 	pthread_mutex_lock(&switcher->mutex);
 	if (switcher->animation_waiting) {
+		switcher->startup_elapsed += seconds;
+		switcher->restart_elapsed += seconds;
 		const enum obs_media_state state = obs_source_media_get_state(switcher->media);
-		if ((state == OBS_MEDIA_STATE_PLAYING || state == OBS_MEDIA_STATE_BUFFERING) &&
+		if (state != OBS_MEDIA_STATE_NONE && state != OBS_MEDIA_STATE_STOPPED &&
+		    state != OBS_MEDIA_STATE_ENDED && state != OBS_MEDIA_STATE_ERROR &&
 		    obs_source_get_width(switcher->media) > 0 && obs_source_get_height(switcher->media) > 0) {
 			switcher->animation_waiting = false;
 			switcher->animation_running = true;
 			switcher->animation_elapsed = 0.0f;
 			trigger_whoosh = switcher->whoosh_pending;
 			switcher->whoosh_pending = false;
+		} else if (switcher->restart_elapsed >= 0.25f && switcher->startup_elapsed <= 2.0f) {
+			switcher->restart_elapsed = 0.0f;
+			retry_media = true;
 		}
 	} else if (switcher->animation_running) {
 		switcher->animation_elapsed += seconds;
@@ -466,6 +511,8 @@ static void otr_tick(void *data, float seconds)
 	}
 	pthread_mutex_unlock(&switcher->mutex);
 
+	if (retry_media)
+		obs_source_media_restart(switcher->media);
 	if (trigger_whoosh)
 		play_whoosh(switcher);
 }
