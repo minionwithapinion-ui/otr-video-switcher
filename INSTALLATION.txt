@@ -7,9 +7,26 @@ OTR VIDEO SWITCHER - EASY INSTALL
 4. Approve the Windows administrator prompt.
 5. Reopen OBS.
 6. Under Sources, click + and choose OTR Video Switcher.
+7. Open its Properties, select your Video 1, Video 2, and Video 3
+   files, then use the Test / Play buttons to confirm them.
 
 IMPORTANT:
 Create the OTR Video Switcher source only once.
 Use Add Existing to place the same source into every horizontal and
 Aitum Vertical scene. This keeps the selected video, animation, and
 whoosh synchronized across both canvases.
+
+STREAM DECK / VSD DECK
+======================
+
+The plugin installs these keyboard controls automatically:
+
+  Ctrl+Alt+1  Play Video 1
+  Ctrl+Alt+2  Play Video 2
+  Ctrl+Alt+3  Play Video 3
+  Ctrl+Alt+0  Stop all videos
+
+In the Stream Deck or VSD Deck software, drag a Keyboard Hotkey action
+onto each key and record the matching shortcut. Keep OBS running while
+using the deck. If the shortcuts were removed in OBS, open the OTR Video
+Switcher Properties and click "Restore Ctrl+Alt+1 / 2 / 3 / 0 Shortcuts".
