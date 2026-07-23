@@ -1,0 +1,15 @@
+OTR VIDEO SWITCHER - EASY INSTALL
+=================================
+
+1. Extract the entire ZIP.
+2. Close OBS Studio.
+3. Double-click INSTALL-OTR-VIDEO-SWITCHER.bat.
+4. Approve the Windows administrator prompt.
+5. Reopen OBS.
+6. Under Sources, click + and choose OTR Video Switcher.
+
+IMPORTANT:
+Create the OTR Video Switcher source only once.
+Use Add Existing to place the same source into every horizontal and
+Aitum Vertical scene. This keeps the selected video, animation, and
+whoosh synchronized across both canvases.
