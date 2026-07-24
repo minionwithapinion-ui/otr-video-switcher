@@ -29,6 +29,7 @@ OBS_MODULE_AUTHOR("OTR")
 #define SETTING_VIDEO_3 "video_3"
 #define SETTING_TRANSITION_MS "transition_ms"
 #define SETTING_WHOOSH_ENABLED "whoosh_enabled"
+#define SETTING_WHOOSH_MONITOR "whoosh_monitor"
 #define SETTING_WHOOSH_VOLUME "whoosh_volume"
 #define SETTING_OUTPUT_WIDTH "output_width"
 #define SETTING_OUTPUT_HEIGHT "output_height"
@@ -57,6 +58,7 @@ struct otr_video_switcher {
 	uint64_t last_switch_ns;
 	int active_slot;
 	bool whoosh_enabled;
+	bool whoosh_monitor;
 	bool has_media;
 	bool animation_waiting;
 	bool animation_running;
@@ -161,10 +163,12 @@ static void update_media_path(obs_source_t *media, const char *path)
 static void play_whoosh(struct otr_video_switcher *switcher)
 {
 	bool enabled;
+	bool monitor;
 	float volume;
 
 	pthread_mutex_lock(&switcher->mutex);
 	enabled = switcher->whoosh_enabled;
+	monitor = switcher->whoosh_monitor;
 	volume = switcher->whoosh_volume;
 	pthread_mutex_unlock(&switcher->mutex);
 
@@ -172,7 +176,8 @@ static void play_whoosh(struct otr_video_switcher *switcher)
 		return;
 
 	obs_source_set_volume(switcher->whoosh, volume);
-	obs_source_set_monitoring_type(switcher->whoosh, OBS_MONITORING_TYPE_NONE);
+	obs_source_set_monitoring_type(switcher->whoosh, monitor ? OBS_MONITORING_TYPE_MONITOR_AND_OUTPUT
+							       : OBS_MONITORING_TYPE_NONE);
 	obs_source_media_stop(switcher->whoosh);
 	obs_source_media_restart(switcher->whoosh);
 }
@@ -432,11 +437,14 @@ static void otr_update(void *data, obs_data_t *settings)
 	switcher->output_height = (uint32_t)obs_data_get_int(settings, SETTING_OUTPUT_HEIGHT);
 	switcher->transition_seconds = (float)obs_data_get_int(settings, SETTING_TRANSITION_MS) / 1000.0f;
 	switcher->whoosh_enabled = obs_data_get_bool(settings, SETTING_WHOOSH_ENABLED);
+	switcher->whoosh_monitor = obs_data_get_bool(settings, SETTING_WHOOSH_MONITOR);
 	switcher->whoosh_volume = (float)obs_data_get_int(settings, SETTING_WHOOSH_VOLUME) / 100.0f;
 	pthread_mutex_unlock(&switcher->mutex);
 
 	obs_source_set_volume(switcher->whoosh, switcher->whoosh_volume);
-	obs_source_set_monitoring_type(switcher->whoosh, OBS_MONITORING_TYPE_NONE);
+	obs_source_set_monitoring_type(switcher->whoosh,
+				       switcher->whoosh_monitor ? OBS_MONITORING_TYPE_MONITOR_AND_OUTPUT
+							 : OBS_MONITORING_TYPE_NONE);
 	obs_source_set_monitoring_type(switcher->media, OBS_MONITORING_TYPE_NONE);
 	obs_source_set_monitoring_type(switcher->source, OBS_MONITORING_TYPE_NONE);
 }
@@ -447,6 +455,7 @@ static void otr_defaults(obs_data_t *settings)
 	obs_data_set_default_int(settings, SETTING_OUTPUT_HEIGHT, 1080);
 	obs_data_set_default_int(settings, SETTING_TRANSITION_MS, 900);
 	obs_data_set_default_bool(settings, SETTING_WHOOSH_ENABLED, true);
+	obs_data_set_default_bool(settings, SETTING_WHOOSH_MONITOR, true);
 	obs_data_set_default_int(settings, SETTING_WHOOSH_VOLUME, 65);
 }
 
@@ -471,6 +480,7 @@ static obs_properties_t *otr_properties(void *data)
 	obs_property_int_set_suffix(duration, " ms");
 
 	obs_properties_add_bool(props, SETTING_WHOOSH_ENABLED, obs_module_text("Properties.WhooshEnabled"));
+	obs_properties_add_bool(props, SETTING_WHOOSH_MONITOR, obs_module_text("Properties.WhooshMonitor"));
 	obs_property_t *volume = obs_properties_add_int_slider(
 		props, SETTING_WHOOSH_VOLUME, obs_module_text("Properties.WhooshVolume"), 0, 100, 1);
 	obs_property_int_set_suffix(volume, "%");
