@@ -56,13 +56,13 @@ jobs:
 
           Compress-Archive `
             -Path package/* `
-            -DestinationPath OTR-Video-Switcher-OBS-1.0.0-Windows-x64.zip `
+            -DestinationPath OTR-Video-Switcher-OBS-1.0.1-Windows-x64.zip `
             -CompressionLevel Optimal
 
       - name: Upload Windows plugin
         uses: actions/upload-artifact@v4
         with:
           name: OTR-Video-Switcher-OBS-Windows-x64
-          path: OTR-Video-Switcher-OBS-1.0.0-Windows-x64.zip
+          path: OTR-Video-Switcher-OBS-1.0.1-Windows-x64.zip
           if-no-files-found: error
           retention-days: 30

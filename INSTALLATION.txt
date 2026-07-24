@@ -30,3 +30,23 @@ In the Stream Deck or VSD Deck software, drag a Keyboard Hotkey action
 onto each key and record the matching shortcut. Keep OBS running while
 using the deck. If the shortcuts were removed in OBS, open the OTR Video
 Switcher Properties and click "Restore Ctrl+Alt+1 / 2 / 3 / 0 Shortcuts".
+
+VIDEO AUDIO AND MONITORING
+==========================
+
+1. Start one of the videos so OTR Video Switcher is active in the Audio Mixer.
+2. Open Advanced Audio Properties from the OBS Audio Mixer menu.
+3. Find OTR Video Switcher and choose the Audio Monitoring mode you want:
+
+   Monitor Off
+     The audience hears it; you do not monitor it locally.
+
+   Monitor Only (mute output)
+     You hear it; it is not sent through that OBS mix.
+
+   Monitor and Output
+     Both you and the audience hear it.
+
+4. Use the normal OTR Video Switcher mixer fader, mute button, and audio
+   track checkboxes. The selected video's audio and whoosh2 share this
+   one channel.

@@ -29,7 +29,6 @@ OBS_MODULE_AUTHOR("OTR")
 #define SETTING_VIDEO_3 "video_3"
 #define SETTING_TRANSITION_MS "transition_ms"
 #define SETTING_WHOOSH_ENABLED "whoosh_enabled"
-#define SETTING_WHOOSH_MONITOR "whoosh_monitor"
 #define SETTING_WHOOSH_VOLUME "whoosh_volume"
 #define SETTING_OUTPUT_WIDTH "output_width"
 #define SETTING_OUTPUT_HEIGHT "output_height"
@@ -58,7 +57,6 @@ struct otr_video_switcher {
 	uint64_t last_switch_ns;
 	int active_slot;
 	bool whoosh_enabled;
-	bool whoosh_monitor;
 	bool has_media;
 	bool animation_waiting;
 	bool animation_running;
@@ -433,16 +431,22 @@ static void otr_update(void *data, obs_data_t *settings)
 	switcher->output_height = (uint32_t)obs_data_get_int(settings, SETTING_OUTPUT_HEIGHT);
 	switcher->transition_seconds = (float)obs_data_get_int(settings, SETTING_TRANSITION_MS) / 1000.0f;
 	switcher->whoosh_enabled = obs_data_get_bool(settings, SETTING_WHOOSH_ENABLED);
-	switcher->whoosh_monitor = obs_data_get_bool(settings, SETTING_WHOOSH_MONITOR);
 	switcher->whoosh_volume = (float)obs_data_get_int(settings, SETTING_WHOOSH_VOLUME) / 100.0f;
 	pthread_mutex_unlock(&switcher->mutex);
 
+	/*
+	 * The private children feed one combined parent mix. Never monitor the
+	 * children directly: doing so bypasses the OTR Video Switcher mixer
+	 * channel and can duplicate audio when the same source is added to both
+	 * horizontal and vertical canvases.
+	 *
+	 * Do not set the parent source's monitoring mode here. OBS owns that
+	 * setting through Advanced Audio Properties, where the user can choose
+	 * Monitor Off, Monitor Only, or Monitor and Output.
+	 */
 	obs_source_set_volume(switcher->whoosh, switcher->whoosh_volume);
 	obs_source_set_monitoring_type(switcher->whoosh, OBS_MONITORING_TYPE_NONE);
 	obs_source_set_monitoring_type(switcher->media, OBS_MONITORING_TYPE_NONE);
-	obs_source_set_monitoring_type(switcher->source,
-				       switcher->whoosh_monitor ? OBS_MONITORING_TYPE_MONITOR_AND_OUTPUT
-							 : OBS_MONITORING_TYPE_NONE);
 }
 
 static void otr_defaults(obs_data_t *settings)
@@ -451,7 +455,6 @@ static void otr_defaults(obs_data_t *settings)
 	obs_data_set_default_int(settings, SETTING_OUTPUT_HEIGHT, 1080);
 	obs_data_set_default_int(settings, SETTING_TRANSITION_MS, 900);
 	obs_data_set_default_bool(settings, SETTING_WHOOSH_ENABLED, true);
-	obs_data_set_default_bool(settings, SETTING_WHOOSH_MONITOR, true);
 	obs_data_set_default_int(settings, SETTING_WHOOSH_VOLUME, 65);
 }
 
@@ -462,6 +465,8 @@ static obs_properties_t *otr_properties(void *data)
 	obs_properties_add_text(props, "instructions", obs_module_text("Properties.Instructions"), OBS_TEXT_INFO);
 	obs_properties_add_text(props, "stream_deck_instructions",
 				obs_module_text("Properties.StreamDeckInstructions"), OBS_TEXT_INFO);
+	obs_properties_add_text(props, "audio_instructions", obs_module_text("Properties.AudioInstructions"),
+				OBS_TEXT_INFO);
 
 	const char *filter = obs_module_text("Properties.VideoFilter");
 	obs_properties_add_path(props, SETTING_VIDEO_1, obs_module_text("Properties.Video1"), OBS_PATH_FILE, filter,
@@ -476,7 +481,6 @@ static obs_properties_t *otr_properties(void *data)
 	obs_property_int_set_suffix(duration, " ms");
 
 	obs_properties_add_bool(props, SETTING_WHOOSH_ENABLED, obs_module_text("Properties.WhooshEnabled"));
-	obs_properties_add_bool(props, SETTING_WHOOSH_MONITOR, obs_module_text("Properties.WhooshMonitor"));
 	obs_property_t *volume = obs_properties_add_int_slider(
 		props, SETTING_WHOOSH_VOLUME, obs_module_text("Properties.WhooshVolume"), 0, 100, 1);
 	obs_property_int_set_suffix(volume, "%");
