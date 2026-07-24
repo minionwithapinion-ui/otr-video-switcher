@@ -163,12 +163,10 @@ static void update_media_path(obs_source_t *media, const char *path)
 static void play_whoosh(struct otr_video_switcher *switcher)
 {
 	bool enabled;
-	bool monitor;
 	float volume;
 
 	pthread_mutex_lock(&switcher->mutex);
 	enabled = switcher->whoosh_enabled;
-	monitor = switcher->whoosh_monitor;
 	volume = switcher->whoosh_volume;
 	pthread_mutex_unlock(&switcher->mutex);
 
@@ -176,8 +174,7 @@ static void play_whoosh(struct otr_video_switcher *switcher)
 		return;
 
 	obs_source_set_volume(switcher->whoosh, volume);
-	obs_source_set_monitoring_type(switcher->whoosh, monitor ? OBS_MONITORING_TYPE_MONITOR_AND_OUTPUT
-							       : OBS_MONITORING_TYPE_NONE);
+	obs_source_set_monitoring_type(switcher->whoosh, OBS_MONITORING_TYPE_NONE);
 	obs_source_media_stop(switcher->whoosh);
 	obs_source_media_restart(switcher->whoosh);
 }
@@ -395,7 +392,6 @@ static void *otr_create(obs_data_t *settings, obs_source_t *source)
 		goto fail;
 	switcher->audio_bus_linked = true;
 
-	obs_source_set_monitoring_type(source, OBS_MONITORING_TYPE_NONE);
 	otr_update(switcher, settings);
 
 	switcher->slot_hotkeys[0] =
@@ -442,11 +438,11 @@ static void otr_update(void *data, obs_data_t *settings)
 	pthread_mutex_unlock(&switcher->mutex);
 
 	obs_source_set_volume(switcher->whoosh, switcher->whoosh_volume);
-	obs_source_set_monitoring_type(switcher->whoosh,
+	obs_source_set_monitoring_type(switcher->whoosh, OBS_MONITORING_TYPE_NONE);
+	obs_source_set_monitoring_type(switcher->media, OBS_MONITORING_TYPE_NONE);
+	obs_source_set_monitoring_type(switcher->source,
 				       switcher->whoosh_monitor ? OBS_MONITORING_TYPE_MONITOR_AND_OUTPUT
 							 : OBS_MONITORING_TYPE_NONE);
-	obs_source_set_monitoring_type(switcher->media, OBS_MONITORING_TYPE_NONE);
-	obs_source_set_monitoring_type(switcher->source, OBS_MONITORING_TYPE_NONE);
 }
 
 static void otr_defaults(obs_data_t *settings)
@@ -785,8 +781,8 @@ static enum gs_color_space otr_color_space(void *data, size_t count,
 static struct obs_source_info otr_source_info = {
 	.id = SOURCE_ID,
 	.type = OBS_SOURCE_TYPE_INPUT,
-	.output_flags = OBS_SOURCE_VIDEO | OBS_SOURCE_CUSTOM_DRAW | OBS_SOURCE_COMPOSITE |
-			OBS_SOURCE_DO_NOT_DUPLICATE | OBS_SOURCE_DO_NOT_SELF_MONITOR |
+	.output_flags = OBS_SOURCE_VIDEO | OBS_SOURCE_AUDIO | OBS_SOURCE_CUSTOM_DRAW | OBS_SOURCE_COMPOSITE |
+			OBS_SOURCE_DO_NOT_DUPLICATE |
 			OBS_SOURCE_CONTROLLABLE_MEDIA,
 	.get_name = otr_get_name,
 	.create = otr_create,
