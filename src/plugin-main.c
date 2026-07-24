@@ -73,6 +73,34 @@ static void otr_update(void *data, obs_data_t *settings);
 static void otr_select_slot(struct otr_video_switcher *switcher, int slot);
 static void otr_stop(struct otr_video_switcher *switcher);
 
+static int otr_find_slot(struct otr_video_switcher *switcher, int direction)
+{
+	int selected = 0;
+
+	pthread_mutex_lock(&switcher->mutex);
+	const int current = switcher->active_slot;
+	for (int step = 1; step <= 3; step++) {
+		int candidate;
+		if (current >= 1 && current <= 3) {
+			candidate = (current - 1 + direction * step) % 3;
+			if (candidate < 0)
+				candidate += 3;
+			candidate += 1;
+		} else {
+			candidate = direction > 0 ? step : 4 - step;
+		}
+
+		const char *path = switcher->paths[candidate - 1];
+		if (path && *path) {
+			selected = candidate;
+			break;
+		}
+	}
+	pthread_mutex_unlock(&switcher->mutex);
+
+	return selected;
+}
+
 static void load_default_hotkeys(struct otr_video_switcher *switcher)
 {
 	const uint32_t modifiers = INTERACT_CONTROL_KEY | INTERACT_ALT_KEY;
@@ -641,11 +669,29 @@ static void otr_enum_sources(void *data, obs_source_enum_proc_t callback, void *
 static void otr_media_play_pause(void *data, bool pause)
 {
 	struct otr_video_switcher *switcher = data;
+	int active_slot;
 	pthread_mutex_lock(&switcher->mutex);
 	const bool has_media = switcher->has_media;
+	active_slot = switcher->active_slot;
 	pthread_mutex_unlock(&switcher->mutex);
-	if (has_media)
-		obs_source_media_play_pause(switcher->media, pause);
+
+	if (!has_media) {
+		if (!pause) {
+			const int slot = otr_find_slot(switcher, 1);
+			if (slot > 0)
+				otr_select_slot(switcher, slot);
+		}
+		return;
+	}
+
+	const enum obs_media_state state = obs_source_media_get_state(switcher->media);
+	if (!pause && (state == OBS_MEDIA_STATE_NONE || state == OBS_MEDIA_STATE_STOPPED ||
+		       state == OBS_MEDIA_STATE_ENDED || state == OBS_MEDIA_STATE_ERROR)) {
+		otr_select_slot(switcher, active_slot);
+		return;
+	}
+
+	obs_source_media_play_pause(switcher->media, pause);
 }
 
 static void otr_media_restart(void *data)
@@ -662,6 +708,22 @@ static void otr_media_restart(void *data)
 static void otr_media_stop(void *data)
 {
 	otr_stop(data);
+}
+
+static void otr_media_next(void *data)
+{
+	struct otr_video_switcher *switcher = data;
+	const int slot = otr_find_slot(switcher, 1);
+	if (slot > 0)
+		otr_select_slot(switcher, slot);
+}
+
+static void otr_media_previous(void *data)
+{
+	struct otr_video_switcher *switcher = data;
+	const int slot = otr_find_slot(switcher, -1);
+	if (slot > 0)
+		otr_select_slot(switcher, slot);
 }
 
 static int64_t otr_media_duration(void *data)
@@ -733,6 +795,8 @@ static struct obs_source_info otr_source_info = {
 	.media_play_pause = otr_media_play_pause,
 	.media_restart = otr_media_restart,
 	.media_stop = otr_media_stop,
+	.media_next = otr_media_next,
+	.media_previous = otr_media_previous,
 	.media_get_duration = otr_media_duration,
 	.media_get_time = otr_media_time,
 	.media_set_time = otr_media_set_time,
