@@ -1,0 +1,68 @@
+name: Build Windows OBS Plugin
+
+on:
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-windows:
+    name: Windows x64
+    runs-on: windows-2022
+
+    steps:
+      - name: Check out plugin files
+        uses: actions/checkout@v4
+
+      - name: Prepare official OBS plugin template
+        shell: pwsh
+        run: |
+          git clone https://github.com/obsproject/obs-plugintemplate.git template
+          Set-Location template
+          git checkout 3e7d7ac3b5342cd7d9b88890b9c70b472d1520fc
+          Set-Location ..
+
+          Copy-Item src/plugin-main.c template/src/plugin-main.c -Force
+          Copy-Item buildspec.json template/buildspec.json -Force
+          Copy-Item data/locale/en-US.ini template/data/locale/en-US.ini -Force
+
+          $whoosh = Get-Content data/whoosh2.flac.b64 -Raw
+          [IO.File]::WriteAllBytes(
+            (Join-Path $PWD 'template/data/whoosh2.flac'),
+            [Convert]::FromBase64String($whoosh)
+          )
+
+      - name: Configure plugin
+        working-directory: template
+        run: cmake --preset windows-x64
+
+      - name: Compile plugin
+        working-directory: template
+        run: cmake --build --preset windows-x64 --config Release --parallel
+
+      - name: Create install-ready package
+        shell: pwsh
+        run: |
+          cmake --install template/build_x64 `
+            --prefix "$env:GITHUB_WORKSPACE/package" `
+            --config Release
+
+          Copy-Item INSTALL-OTR-VIDEO-SWITCHER.bat package/INSTALL-OTR-VIDEO-SWITCHER.bat
+          Copy-Item INSTALLATION.txt package/INSTALLATION.txt
+
+          Compress-Archive `
+            -Path package/* `
+            -DestinationPath OTR-Video-Switcher-OBS-1.0.1-Windows-x64.zip `
+            -CompressionLevel Optimal
+
+      - name: Upload Windows plugin
+        uses: actions/upload-artifact@v4
+        with:
+          name: OTR-Video-Switcher-OBS-Windows-x64
+          path: OTR-Video-Switcher-OBS-1.0.1-Windows-x64.zip
+          if-no-files-found: error
+          retention-days: 30
